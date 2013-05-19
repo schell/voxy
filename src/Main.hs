@@ -2,6 +2,7 @@ module Main where
 
 import qualified Graphics.UI.GLFW as GLFW 
 
+import Shaders
 import Graphics.Rendering.OpenGL.Raw
 import Graphics.Rendering.GLU.Raw           ( gluPerspective )
 import Data.Bits                            ( (.|.) )
@@ -14,6 +15,8 @@ main = do
     -- Get a 640 x 480 window.
     -- Initialize the window.
     True <- GLFW.openWindow displayOptions 
+    -- Make sure the window is gpu'able.
+    True <- GLFW.windowIsHardwareAccelerated
     -- Window will show at upper left corner.
     GLFW.setWindowPosition 0 0
     -- Set the window title.
@@ -31,11 +34,13 @@ main = do
     -- Register our window close function.
     GLFW.setWindowCloseCallback shutdown
 
+    -- Shader stuff.
+    v <- compileVertexShader vertexShaderSource
+    f <- compileFragmentShader fragmentShaderSource
+
     initGL
 
-    forever $ do 
-        drawScene
-        GLFW.swapBuffers
+    forever drawScene
 
 displayOptions :: GLFW.DisplayOptions
 displayOptions = GLFW.defaultDisplayOptions { GLFW.displayOptions_width  = 800
@@ -52,10 +57,9 @@ displayOptions = GLFW.defaultDisplayOptions { GLFW.displayOptions_width  = 800
 drawScene :: IO ()
 drawScene = do
     -- Clear the screen and the depth buffer.
-    glClear $ fromIntegral $ gl_COLOR_BUFFER_BIT .|. gl_DEPTH_BUFFER_BIT
-    -- Reset view.
-    glLoadIdentity
-    glFlush
+    glClear (gl_COLOR_BUFFER_BIT .|. gl_DEPTH_BUFFER_BIT)
+    glDrawArrays gl_TRIANGLES 0 3
+    GLFW.swapBuffers
 
 resizeScene :: GLFW.WindowSizeCallback
 -- Prevent a division by zero.

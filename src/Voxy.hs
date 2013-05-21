@@ -6,12 +6,13 @@ import Graphics.Rendering.OpenGL
 import Shaders
 import Util
 
-import Control.Monad    ( void, when, unless, forever )
-import System.Exit      ( exitSuccess )
-import System.Directory ( getCurrentDirectory )
-import System.FilePath  ( (</>) )
+import Control.Monad         ( void, when, unless, forever )
+import System.Exit           ( exitSuccess )
+import System.Directory      ( getCurrentDirectory )
+import System.FilePath       ( (</>) )
 import Foreign.Marshal.Array ( withArray )
-import Foreign.Ptr      ( nullPtr )
+import Foreign.Ptr           ( nullPtr )
+import Foreign.Storable      ( sizeOf )
 
 data Shaders = Shaders { vertexShader   :: VertexShader
                        , fragmentShader :: FragmentShader
@@ -34,8 +35,6 @@ voxy dataDir = do
     GLFW.setWindowPosition 0 0
     -- Set the window title.
     GLFW.setWindowTitle "voxy"
-    -- Register our scene drawing function.
-    GLFW.setWindowRefreshCallback drawScene
     -- Register our resize window function.
     --GLFW.setWindowRefreshCallback drawScene
     -- Register our keyboard input function.
@@ -69,8 +68,9 @@ voxy dataDir = do
 
     [vbo] <- genObjectNames 1
     bindBuffer ArrayBuffer $= Just vbo
+    let floatSize = 3 * 3 * sizeOf (undefined :: Float)
     withArray vertexData $ \ptr ->
-        bufferData ArrayBuffer $= (3*3*4, ptr, StaticDraw)
+        bufferData ArrayBuffer $= (fromIntegral floatSize, ptr, StaticDraw)
     vertexAttribPointer (AttribLocation 0) $= (ToFloat, VertexArrayDescriptor 3 Float 0 nullPtr) 
     clientState VertexArray $= Enabled
 --
@@ -81,7 +81,10 @@ voxy dataDir = do
 --    glVertexAttribPointer 0 3 gl_FLOAT 0 0 nullPtr
 --    glEnableVertexAttribArray 0
 
-    forever drawScene
+    -- Register our scene drawing function.
+    GLFW.setWindowRefreshCallback $ drawScene vbo
+
+    forever $ drawScene vbo
 
 displayOptions :: GLFW.DisplayOptions
 displayOptions = GLFW.defaultDisplayOptions { GLFW.displayOptions_width  = 800
@@ -100,10 +103,17 @@ vertexData = [  0.0,  0.9, 0.0
              , -0.9, -0.9, 0.0
              ,  0.9, -0.9, 0.0 ]
 
-drawScene :: IO ()
-drawScene = do
+bindVbo :: GLint -> GLuint -> BufferObject -> IO ()
+bindVbo size loc vb = do
+    vertexAttribArray (AttribLocation loc) $= Enabled
+    bindBuffer ArrayBuffer $= Just vb
+    vertexAttribPointer (AttribLocation loc) $= (ToFloat, VertexArrayDescriptor size Float 0 nullPtr)
+
+drawScene :: BufferObject -> IO ()
+drawScene vbo = do
     -- Clear the screen and the depth buffer.
     clear [ColorBuffer, DepthBuffer]
+    bindVbo 3 0 vbo
     drawArrays Triangles 0 3 
     GLFW.swapBuffers
 

@@ -25,4 +25,5 @@ executable voxy
                        OpenGL -any,
                        directory -any,
                        filepath -any,
-                       urzas-toolbox -any
+                       urzas-toolbox -any,
+                       linear -any

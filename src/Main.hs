@@ -3,7 +3,7 @@ module Main where
 import           Urza
 import qualified Urza.Color as Color
 import           Urza.Shader
-import           Foreign
+import           Foreign hiding (void)
 import           Control.Concurrent.MVar
 import           Control.Concurrent
 import           Graphics.Rendering.OpenGL hiding (Matrix, renderer, get, drawPixels, Bitmap)
@@ -20,7 +20,7 @@ import           Linear hiding (trace)
 
 
 
-type Camera = Matrix GLfloat
+type Camera = M44 GLfloat
 
 data Input = Input { _iCursor :: (Double,Double)
                    , _iKeys   :: [Key]
@@ -40,43 +40,45 @@ addEvent i _ = i
 
 updateCamera :: Camera -> Input -> Input -> Camera
 updateCamera c i i' =
-    let s = 0.1
-        dx = realToFrac $ i'x - ix
-        dy = realToFrac $ i'y - iy
-        (ix,iy) = _iCursor i
-        (i'x,i'y) = _iCursor i'
-    in translateCamera i' Key'W s outVector      $
-       translateCamera i' Key'A (-s) rightVector $
-       translateCamera i' Key'S (-s) outVector   $
-       translateCamera i' Key'D s rightVector    $
-       rotateCamera (dx,dy) s c
+    let ts = 0.1
+        rs = 1/180
+        dx = realToFrac $ m'x - mx
+        dy = realToFrac $ m'y - my
+        (mx,my) = _iCursor i
+        (m'x,m'y) = _iCursor i'
+    in trace (show (dx,dy)) $
+       translateCamera i' Key'W ts vOut      $
+       translateCamera i' Key'A (-ts) vRight $
+       translateCamera i' Key'S (-ts) vOut   $
+       translateCamera i' Key'D ts vRight    $
+       rotateCamera (dx,dy) rs c
 
 
-translateCamera :: Input -> Key -> GLfloat -> (Matrix GLfloat -> Vector GLfloat) -> Camera -> Camera
+translateCamera :: Input -> Key -> GLfloat -> (M44 GLfloat -> V3 GLfloat) -> Camera -> Camera
 translateCamera i key speed vf c =
     if key `elem` _iKeys i
-      then c `multiply` t
+      then c !*! t
       else c
-    where t = translationMatrix3d dx dy dz
-          [dx,dy,dz] = map (*speed) $ vf c
+    where t = transM44 dx dy dz
+          V3 dx dy dz = fmap (*speed) $ vf c
 
 
 rotateCamera :: (GLfloat, GLfloat) -> GLfloat -> Camera -> Camera
 rotateCamera (dx,dy) s c =
-    if dx > 0 || dy > 0
-      then c `multiply` trace (show u) u
+    if abs dx > 0 || abs dy > 0
+      then c !*! r !*! u
       else c
-    where r = rotationMatrix3d rx ry rz
-          u = rotationMatrix3d ux uy uz
-          [rx,ry,rz] = rightVector c
-          [ux,uy,uz] = map ((s*dx)*) $ upVector c
+    where r = mkTransformation rq $ V3 0 0 0
+          rq = axisAngle (vRight c) $ s * dy
+          u = mkTransformation uq $ V3 0 0 0
+          uq = axisAngle (vUp c) $ s * dx
 
 
 main :: IO ()
 main = do
     let txt = map toEnum [32..126]
 
-    camvar <- newMVar $ identityN 4
+    camvar <- newMVar eye4
     invar  <- newMVar $ Input (0,0) []
     wvar <- initUrza (100,100) (800,600) "Voxy Town"
     fontDir <- fmap (</> "Library" </> "Fonts") getHomeDirectory
@@ -125,10 +127,6 @@ main = do
                ] :: [GLubyte]
 
 
-    let toList :: M44 a -> [a]
-        toList = F.foldl (\vs (V4 a b c d) -> vs ++ [a,b,c,d]) []
-
-
     --print vs
     i <- genObjectName
     bindBuffer ElementArrayBuffer $= Just i
@@ -156,23 +154,22 @@ main = do
         makeContextCurrent $ Just window
         viewport $= (Position 0 0, Size winW winH)
         clearColor $= Color.black
-        blend $= Disabled 
-        depthFunc $= Just Less 
+        depthFunc $= Just Less
         clear [ColorBuffer, DepthBuffer]
 
         r^.shader.setIs3d $ True
         r^.shader.setIsTextured $ False
         r^.shader.setColorIsReplaced $ False
         clientState VertexArray $= Enabled
-        --r^.shader.setProjection $ toList $ perspectM44 (pi/4) aspr 3 7
-        r^.shader.setProjection $ toList $ orthoM44 (-10) 10 (-10) 10 (-10) 10
-        r^.shader.setModelview $ toList $ eye4 !*! mkTransformationMat eye3 (V3 0 0 (-5))
+        r^.shader.setProjection $ perspectM44 45 aspr 0.1 10
+        --r^.shader.setProjection $ toList $ orthoM44 (-10) 10 (-10) 10 (-10) 10
+        r^.shader.setModelview $ cam' !*! mkTransformationMat eye3 (V3 0 0 (-5))
         drawElements Triangles (fromIntegral $ length ndxs) UnsignedByte nullPtr
 
-        r^.shader.setProjection $ concat $ orthoMatrix 0 (fromIntegral winW) 0 (fromIntegral winH) 0 1
-        r^.shader.setModelview $ concat $ identityN 4
-        r^.shader.setTextColor $ Color.red
-        --drawTextAt r (Position 0 0) $ camToStr cam
+        r^.shader.setProjection $ orthoM44 0 (fromIntegral winW) 0 (fromIntegral winH) 0 1
+        r^.shader.setModelview $ eye4
+        r^.shader.setTextColor $ Color4 1 1 0 1
+        drawTextAt r (Position 0 0) "Weee!"
 
         -- Render the display list.
 --        modifyMVar_ sceneVar $ renderScene (Size winW winH)

@@ -26,4 +26,5 @@ executable voxy
                        directory -any,
                        filepath -any,
                        urzas-toolbox -any,
-                       linear -any
+                       linear -any,
+                       netwire >= 5.0

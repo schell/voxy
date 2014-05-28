@@ -67,17 +67,17 @@ easeOutPow pow = tweenWire $ \c t b ->
 
 easeInSine :: TweenWireF
 easeInSine = tweenWire $ \c t b ->
-    let cos' = fmap cos (t * (pi / 2))
+    let cos' = cos (t * (pi / 2))
     in -c * cos' + c + b
 
 easeOutSine :: TweenWireF
 easeOutSine = tweenWire $ \c t b ->
-    let cos' = fmap cos (t * (pi / 2))
+    let cos' = cos (t * (pi / 2))
     in c * cos' + b
 
 easeInOutSine :: TweenWireF
 easeInOutSine = tweenWire $ \c t b ->
-    let cos' = fmap cos (pi * t)
+    let cos' = cos (pi * t)
     in (-c / 2) * (cos' - 1) + b
 
 easeInExpo :: TweenWireF
@@ -88,10 +88,24 @@ easeInExpo = tweenWire $ \c t b ->
 easeOutExpo :: TweenWireF
 easeOutExpo = tweenWire $ \c t b ->
     let e = -10 * t
-    in trace ("out") c * (-(2**e) + 1) + b
+    in c * (-(2**e) + 1) + b
 
 easeInOutExpo :: TweenWireF
 easeInOutExpo = easeInOutF easeInExpo easeOutExpo
 
+easeInCirc :: TweenWireF
+easeInCirc = tweenWire $ \c t b ->
+    let s = sqrt (1 - t*t)
+    in -c * (s - 1) + b
+
+easeOutCirc :: TweenWireF
+easeOutCirc = tweenWire $ \c t b ->
+    let t' = (t - 1)
+        s  = sqrt (1 - t'*t')
+    in c * s + b
+
+easeInOutCirc :: TweenWireF
+easeInOutCirc = easeInOutF easeInCirc easeOutCirc
+
 latestTween :: TweenWireF
-latestTween = easeInOutExpo
+latestTween = easeInOutCirc

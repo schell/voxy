@@ -34,15 +34,16 @@ main = do
     Just face <- loadBitmap (imgDir </> "face.png")
 
     M.forever $ do
+        -- Execute Urza callbacks and load up events.
         pollEvents
-        -- Do all of our state mutation up front right here.
+        -- Get the events that have occurred in this frame.
         (events, window) <- takeMVar wvar
+        -- Clean out the events. Urza will append new ones next frame.
+        putMVar wvar ([], window)
 
-        putMVar wvar ([],window)
-
-        -- Every thing else is just about displaying our state.
         (winW, winH) <- fmap (over both fromIntegral) $ getWindowSize window
 
+        -- Make rendering preparations.
         makeContextCurrent $ Just window
         viewport $= (Position 0 0, Size winW winH)
         clearColor $= Color.black
@@ -64,6 +65,7 @@ main = do
 
         putMVar wirevar (session', wire')
 
+        -- Render!
         case mx of
             Left e -> putStrLn $ "Inhibited: " ++ show e
             Right pos@(Position x y) -> do

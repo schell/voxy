@@ -80,7 +80,7 @@ main = do
 
 
 -- Should inhibit until the mouse is clicked, then runs posWire - but
--- instead it inhibets until the mouse is clicked then runs posWire, then
+-- instead it inhibits until the mouse is clicked then runs posWire, then
 -- inhibits immediately after.
 mousePosWire :: (HasTime t s, Monad m, Fractional t) => Wire s () m [InputEvent] Position
 mousePosWire = posWire . asSoonAs . mouseClick

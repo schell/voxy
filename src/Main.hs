@@ -2,16 +2,12 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Main where
 
-import           Prelude hiding ((.), id)
+import           Prelude hiding ((.), id, until)
 import           Urza
+import           Urza.Wire
 import           Tween
 import           FRP.Netwire
-import           Control.Wire
-import           Control.Wire.Core
-import           Control.Wire.Unsafe.Event
 import           Control.Monad.Reader hiding (when)
-import           Data.Maybe
-import qualified Data.Set as S
 import qualified Urza.Color as Color
 import           Control.Concurrent.MVar
 import           Graphics.Rendering.OpenGL hiding (Matrix, renderer, get, drawPixels, Bitmap)
@@ -22,11 +18,6 @@ import           System.FilePath ((</>))
 import           System.Exit
 import           Linear hiding (trace)
 
-type Env = Maybe InputEvent
-
-type Step s w b = (s, w, b)
-
-type AppWire s b = Wire s () (ReaderT Env IO) () b
 
 -- | TODO: Get rid of the many MVars.
 
@@ -35,6 +26,7 @@ main = do
     let txt = map toEnum [32..126]
 
     wvar    <- initUrza (100,100) (800,600) "Voxy Town"
+    evar    <- newMVar $ Env Nothing False $ (0, 0)
     wirevar <- newMVar (clockSession_, myWire, Right $ Position 0 0)
     fontDir <- fmap (</> "Library" </> "Fonts") getHomeDirectory
     imgDir  <- fmap (</> "assets" </> "img") getCurrentDirectory
@@ -55,11 +47,12 @@ main = do
         -- Put the rest back for later.
         putMVar wvar (events', window)
 
+        -- Process, update and return our environment.
+        env <- processEnv mEvent <$> takeMVar evar
+        putMVar evar env
+
         (session, wire, _) <- takeMVar wirevar
-        (session', wire', mx) <- case mEvent of
-            Nothing -> stepTime session wire
-            Just ev -> do (session', wire', _) <- stepEvent session wire ev
-                          stepTime session' wire'
+        (session', wire', mx) <- step session wire env
         putMVar wirevar (session', wire', mx)
 
         -- Render!
@@ -79,7 +72,7 @@ main = do
         r^.shader.setColorIsReplaced $ True
 
         case mx of
-            Left e -> putStrLn $ "Inhibited"
+            Left _ -> putStrLn $ "Inhibited"
             Right pos@(Position x y) -> do
                 let pos2 = Position (x+5) (y+5)
                 M.void $ drawTextAt' r pos $ show pos
@@ -90,43 +83,9 @@ main = do
         shouldClose <- windowShouldClose window
         M.when shouldClose exitSuccess
 
-stepTime :: Session IO s -> AppWire s b -> IO (Session IO s, AppWire s b, Either () b)
-stepTime session wire = do
-    (ds, session')  <- stepSession session
-    (mx, wire') <- runReaderT (stepWire wire ds $ Right ()) Nothing
-    return (session', wire', mx)
-
-stepEvent :: (Monoid s) => t -> AppWire s b -> InputEvent -> IO (t, AppWire s b, Either () b)
-stepEvent session wire ev = do
-    print ev
-    (mx, wire') <- runReaderT (stepWire wire mempty $ Right ()) $ Just ev
-    return (session, wire', mx)
-
-keyEvent :: MonadReader Env m => Key -> KeyState -> Wire s e m a (Event a)
-keyEvent key kstate = mkGen_ $ \a -> do
-    mEv <- ask
-    return $ Right $ case mEv of
-        Just (KeyEvent k _ ks _) -> if k == key && ks == kstate then Event a else NoEvent
-        _ -> NoEvent
-
-cursorMoveEvent :: MonadReader Env m => Wire s e m a (Event (Double, Double))
-cursorMoveEvent = mkGen_ $ \_ -> do
-    mEv <- ask
-    return $ Right $ case mEv of
-        Just (CursorMoveEvent x y) -> Event (x, y)
-        _ -> NoEvent
-
-cursorEnterEvent :: MonadReader Env m => CursorState -> Wire s e m a (Event a)
-cursorEnterEvent cState = mkGen_ $ \a -> do
-    mEv <- ask
-    return $ Right $ case mEv of
-        Just (CursorEnterEvent s) -> if cState == s then Event a else NoEvent
-        _ -> NoEvent
-
-
-myWire :: (MonadReader (Maybe InputEvent) m, HasTime t s, Monoid e, Fractional t) => Wire s e m a Position
-myWire = cursor2Pos . asSoonAs . cursorMoveEvent <|> (pure $ Position 0 0)
-    where cursor2Pos = arr $ \(x, y) -> Position (round x) (round y)
+myWire :: (MonadReader Env m, HasTime t s, Monoid e, Fractional t) => Wire s e m a Position
+myWire = cursor2Pos . asSoonAs . mouseButtonEvent MouseButton'1 MouseButtonState'Pressed
+--myWire = whenCursorIsOnScreen . (cursorPositionStartingWith $ Position 0 0) <|> (pure $ Position 0 0)
 
 -- Animate back and forth horizontally.
 posWire :: (Monad m, Monoid e, HasTime t s, Fractional t) => Wire s e m a Position
@@ -135,3 +94,5 @@ posWire = Position <$> tween <*> 0
           tween2 = for 1 . fmap round (easeInOutExpo (200 :: Double) 0 1)
           tween  = tween1 --> tween2 --> tween
 
+cursor2Pos :: (Monad m) => Wire s e m (Double, Double) Position 
+cursor2Pos = arr $ \(x, y) -> Position (round x) (round y)

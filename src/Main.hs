@@ -22,7 +22,9 @@ import           System.FilePath ((</>))
 import           System.Exit
 import           Linear hiding (trace)
 
-type Env = S.Set Key
+type Env = Maybe InputEvent
+
+type Step s w b = (s, w, b)
 
 type AppWire s b = Wire s () (ReaderT Env IO) () b
 
@@ -33,8 +35,7 @@ main = do
     let txt = map toEnum [32..126]
 
     wvar    <- initUrza (100,100) (800,600) "Voxy Town"
-    envvar  <- newMVar S.empty
-    wirevar <- newMVar (clockSession_, keyPosWire)
+    wirevar <- newMVar (clockSession_, myWire, Right $ Position 0 0)
     fontDir <- fmap (</> "Library" </> "Fonts") getHomeDirectory
     imgDir  <- fmap (</> "assets" </> "img") getCurrentDirectory
 
@@ -54,10 +55,12 @@ main = do
         -- Put the rest back for later.
         putMVar wvar (events', window)
 
-        -- mx is our time/event varying value.
-        mx <- case mEvent of
-            Nothing -> stepTime wirevar envvar
-            Just ev -> stepEvent ev wirevar envvar
+        (session, wire, _) <- takeMVar wirevar
+        (session', wire', mx) <- case mEvent of
+            Nothing -> stepTime session wire
+            Just ev -> do (session', wire', _) <- stepEvent session wire ev
+                          stepTime session' wire'
+        putMVar wirevar (session', wire', mx)
 
         -- Render!
         (winW, winH) <- fmap (over both fromIntegral) $ getWindowSize window
@@ -76,7 +79,7 @@ main = do
         r^.shader.setColorIsReplaced $ True
 
         case mx of
-            Left e -> putStrLn $ "Inhibited: " ++ show e
+            Left e -> putStrLn $ "Inhibited"
             Right pos@(Position x y) -> do
                 let pos2 = Position (x+5) (y+5)
                 M.void $ drawTextAt' r pos $ show pos
@@ -87,61 +90,48 @@ main = do
         shouldClose <- windowShouldClose window
         M.when shouldClose exitSuccess
 
-stepTime :: MVar (Session IO s, AppWire s b) -> MVar Env -> IO (Either () b)
-stepTime wirevar envvar = do
-    env <- readMVar envvar
-    (session, wire) <- takeMVar wirevar
+stepTime :: Session IO s -> AppWire s b -> IO (Session IO s, AppWire s b, Either () b)
+stepTime session wire = do
     (ds, session')  <- stepSession session
-    (mx, wire') <- runReaderT (stepWire wire ds $ Right ()) env
-    putMVar wirevar (session', wire')
-    return mx
+    (mx, wire') <- runReaderT (stepWire wire ds $ Right ()) Nothing
+    return (session', wire', mx)
 
-stepEvent :: (Monoid s) => InputEvent -> MVar (Session IO s, AppWire s b) -> MVar Env -> IO (Either () b)
-stepEvent (KeyEvent key _ kstate _) wirevar envvar = do
-    putStrLn $ show key ++ " " ++ show kstate
-    env <- takeMVar envvar
-    (session, wire) <- takeMVar wirevar
-    let env' = if kstate == KeyState'Pressed
-                 then S.delete key env
-                 else S.insert key env
-    (mx, wire') <- runReaderT (stepWire wire mempty $ Right ()) env'
-    putMVar wirevar (session, wire')
-    putMVar envvar env'
-    return mx
-stepEvent _ wirevar envvar = do
-    env <- readMVar envvar
-    (session, wire) <- takeMVar wirevar
-    (ds, session')  <- stepSession session
-    (mx, wire') <- runReaderT (stepWire wire ds $ Right ()) env
-    putMVar wirevar (session', wire')
-    return mx
+stepEvent :: (Monoid s) => t -> AppWire s b -> InputEvent -> IO (t, AppWire s b, Either () b)
+stepEvent session wire ev = do
+    print ev
+    (mx, wire') <- runReaderT (stepWire wire mempty $ Right ()) $ Just ev
+    return (session, wire', mx)
 
-keyIsDown :: (MonadReader (S.Set a) m, Ord a) => a -> Wire s e m a1 (Event a1)
-keyIsDown key =
-    mkGen_ $ \x -> do
-        isPressed <- asks (S.member key)
-        return $ if isPressed then Right (Event x) else Right NoEvent
+keyEvent :: MonadReader Env m => Key -> KeyState -> Wire s e m a (Event a)
+keyEvent key kstate = mkGen_ $ \a -> do
+    mEv <- ask
+    return $ Right $ case mEv of
+        Just (KeyEvent k _ ks _) -> if k == key && ks == kstate then Event a else NoEvent
+        _ -> NoEvent
 
-keyPosWire = asSoonAs . keyIsDown Key'A . (pure $ Position 500 500) <|> posWire
+cursorMoveEvent :: MonadReader Env m => Wire s e m a (Event (Double, Double))
+cursorMoveEvent = mkGen_ $ \_ -> do
+    mEv <- ask
+    return $ Right $ case mEv of
+        Just (CursorMoveEvent x y) -> Event (x, y)
+        _ -> NoEvent
+
+cursorEnterEvent :: MonadReader Env m => CursorState -> Wire s e m a (Event a)
+cursorEnterEvent cState = mkGen_ $ \a -> do
+    mEv <- ask
+    return $ Right $ case mEv of
+        Just (CursorEnterEvent s) -> if cState == s then Event a else NoEvent
+        _ -> NoEvent
+
+
+myWire :: (MonadReader (Maybe InputEvent) m, HasTime t s, Monoid e, Fractional t) => Wire s e m a Position
+myWire = cursor2Pos . asSoonAs . cursorMoveEvent <|> (pure $ Position 0 0)
+    where cursor2Pos = arr $ \(x, y) -> Position (round x) (round y)
 
 -- Animate back and forth horizontally.
+posWire :: (Monad m, Monoid e, HasTime t s, Fractional t) => Wire s e m a Position
 posWire = Position <$> tween <*> 0
     where tween1 = for 1 . fmap round (easeInOutExpo (0 :: Double) 200 1)
           tween2 = for 1 . fmap round (easeInOutExpo (200 :: Double) 0 1)
           tween  = tween1 --> tween2 --> tween
 
--- Inhibits until producing a `Just` value.
-whenIsJust :: (Monad m, Monoid e) => Wire s e m (Maybe a) a
-whenIsJust = fromJust <$> when isJust
-
--- Inhibits until a mouse move.
-cursorMove :: (Monad m, Monoid e) => Wire s e m [InputEvent] (Event InputEvent)
-cursorMove = now . whenIsJust . arr getMouseMoveEvent
-
--- Inhibits until a mouse click.
-mouseClick :: (Monad m, Monoid e) => Wire s e m [InputEvent] (Event InputEvent)
-mouseClick = now . whenIsJust . arr getMouseUpEvent
-
--- For testing events.
-addInputEventsEvery :: (HasTime t s, Monad m, Monoid e) => t -> Wire s e m a (Event [InputEvent])
-addInputEventsEvery t = after 2 . periodic t . pure [CursorMoveEvent 0 0]

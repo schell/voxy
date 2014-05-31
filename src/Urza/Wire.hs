@@ -8,37 +8,24 @@ import           FRP.Netwire
 import           Control.Wire
 import           Control.Wire.Unsafe.Event
 import           Control.Monad.Reader hiding (when)
-import           Data.Maybe
+import qualified Data.Set as S
 import           Graphics.Rendering.OpenGL hiding (Matrix, renderer, get, drawPixels, Bitmap)
 import           Control.Lens hiding ((#), at)
 
 
--- | Processes individual events into the input environment.
-processEnv :: Maybe InputEvent -> Env -> Env
-processEnv mE@(Just (CursorMoveEvent x y)) env =
-    env & envLastCursorPos .~ (x,y) & envEvent .~ mE
-processEnv mE@(Just (CursorEnterEvent cs)) env =
-    env & envCursorOnScreen .~ (cs == CursorState'InWindow) & envEvent .~ mE
-processEnv mE env = env & envEvent .~ mE
+keyIsDown :: MonadReader Env m => Key -> Wire s e m a (Event a)
+keyIsDown key = mkGen_ $ \a -> do
+    isDown <- asks $ S.member key . _envKeysDown
+    return $ Right $ if isDown then Event a else NoEvent
 
-step :: (Monoid s) => Session IO s -> UrzaWire s b -> Env -> IO (Session IO s, UrzaWire s b, Either () b)
-step session wire env
-    | isJust $ env^.envEvent = do
-        (session', wire', _) <- stepEvent session wire env
-        stepTime session' wire' env
-    | otherwise = stepTime session wire env
+keyDown :: MonadReader Env m => Key -> Wire s e m a (Event a)
+keyDown key = keyEvent key KeyState'Pressed
 
-stepTime :: Session IO s -> UrzaWire s b -> Env -> IO (Session IO s, UrzaWire s b, Either () b)
-stepTime session wire env = do
-    (ds, session')  <- stepSession session
-    (mx, wire') <- runReaderT (stepWire wire ds $ Right ()) env
-    return (session', wire', mx)
+keyUp :: MonadReader Env m => Key -> Wire s e m a (Event a)
+keyUp key = keyEvent key KeyState'Released
 
-stepEvent :: (Monoid s) => t -> UrzaWire s b -> Env -> IO (t, UrzaWire s b, Either () b)
-stepEvent session wire env = do
-    print env
-    (mx, wire') <- runReaderT (stepWire wire mempty $ Right ()) $ env
-    return (session, wire', mx)
+keyRepeat :: MonadReader Env m => Key -> Wire s e m a (Event a)
+keyRepeat key = keyEvent key KeyState'Repeating
 
 keyEvent :: MonadReader Env m => Key -> KeyState -> Wire s e m a (Event a)
 keyEvent key kstate = mkGen_ $ \a -> do
@@ -47,22 +34,11 @@ keyEvent key kstate = mkGen_ $ \a -> do
         Just (KeyEvent k _ ks _) -> if k == key && ks == kstate then Event a else NoEvent
         _ -> NoEvent
 
-cursorMoveEvent :: MonadReader Env m => Wire s e m a (Event (Double, Double))
-cursorMoveEvent = mkGen_ $ \_ -> do
+charEvent :: MonadReader Env m => Wire s e m a (Event Char)
+charEvent = mkGen_ $ \_ -> do
     mEv <- asks _envEvent
     return $ Right $ case mEv of
-        Just (CursorMoveEvent x y) -> Event (x, y)
-        _ -> NoEvent
-
-mouseButtonEvent :: MonadReader Env m => MouseButton -> MouseButtonState -> Wire s e m a (Event (Double, Double))
-mouseButtonEvent mbutton mstate = mkGen_ $ \_ -> do
-    mEv   <- asks _envEvent
-    (x,y) <- asks _envLastCursorPos
-    return $ Right $ case mEv of
-        Just (MouseButtonEvent mbutton' mstate' _) ->
-            if mbutton == mbutton' && mstate == mstate'
-              then Event (x,y)
-              else NoEvent
+        Just (CharEvent ch) -> Event ch
         _ -> NoEvent
 
 cursorEnterEvent :: MonadReader Env m => CursorState -> Wire s e m a (Event a)
@@ -82,4 +58,59 @@ cursorPositionStartingWith :: (MonadReader Env m, HasTime t s, Monoid e, Fractio
 cursorPositionStartingWith pos = cursor2Pos . asSoonAs . cursorMoveEvent <|> (pure pos)
     where cursor2Pos = arr $ \(x, y) -> Position (round x) (round y)
 
+cursorMoveEvent :: MonadReader Env m => Wire s e m a (Event (Double, Double))
+cursorMoveEvent = mkGen_ $ \_ -> do
+    mEv <- asks _envEvent
+    return $ Right $ case mEv of
+        Just (CursorMoveEvent x y) -> Event (x, y)
+        _ -> NoEvent
+
+mouseIsDown :: MonadReader Env m => MouseButton -> Wire s e m a (Event a)
+mouseIsDown button = mkGen_ $ \a -> do
+    isDown <- asks $ S.member button . _envMouseButtonsDown
+    return $ Right $ if isDown then Event a else NoEvent
+
+mouseButtonEvent :: MonadReader Env m => MouseButton -> MouseButtonState -> Wire s e m a (Event (Double, Double))
+mouseButtonEvent mbutton mstate = mkGen_ $ \_ -> do
+    mEv   <- asks _envEvent
+    (x,y) <- asks _envLastCursorPos
+    return $ Right $ case mEv of
+        Just (MouseButtonEvent mbutton' mstate' _) ->
+            if mbutton == mbutton' && mstate == mstate'
+              then Event (x,y)
+              else NoEvent
+        _ -> NoEvent
+
+scrollEvent :: MonadReader Env m => Wire s e m a (Event (Double, Double))
+scrollEvent = mkGen_ $ \_ -> do
+    mEv <- asks _envEvent
+    return $ Right $ case mEv of
+        Just (ScrollEvent x y) -> Event (x,y)
+        _ -> NoEvent
+
+windowResizeEvent :: MonadReader Env m => Wire s e m a (Event (Int, Int))
+windowResizeEvent = mkGen_ $ \_ -> do
+    mEv <- asks _envEvent
+    return $ Right $ case mEv of
+        Just (WindowSizeEvent x y) -> Event (x,y)
+        _ -> NoEvent
+
+
+-- | Processes individual events into the input environment.
+processEnv :: Maybe InputEvent -> Env -> Env
+processEnv mE@(Just (CursorMoveEvent x y)) env =
+    env & envLastCursorPos .~ (x,y) & envEvent .~ mE
+processEnv mE@(Just (CursorEnterEvent cs)) env =
+    env & envCursorOnScreen .~ (cs == CursorState'InWindow) & envEvent .~ mE
+processEnv mE@(Just (MouseButtonEvent mb MouseButtonState'Pressed _)) env =
+    env & (envMouseButtonsDown %~ S.insert mb) & envEvent .~ mE
+processEnv mE@(Just (MouseButtonEvent mb MouseButtonState'Released _)) env =
+    env & (envMouseButtonsDown %~ S.delete mb) & envEvent .~ mE
+processEnv mE env = env & envEvent .~ mE
+
+step :: (Monoid s) => Session IO s -> UrzaWire s b -> Env -> IO (Session IO s, UrzaWire s b, Either () b)
+step session wire env = do
+    (ds, session')  <- stepSession session
+    (mx, wire') <- runReaderT (stepWire wire ds $ Right ()) env
+    return (session', wire', mx)
 

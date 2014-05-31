@@ -25,9 +25,9 @@ main :: IO ()
 main = do
     let txt = map toEnum [32..126]
 
-    wvar    <- initUrza (100,100) (800,600) "Voxy Town"
-    evar    <- newMVar $ Env Nothing False $ (0, 0)
-    wirevar <- newMVar (clockSession_, myWire, Right $ Position 0 0)
+    wvar    <- initUrza (100,100) (800,600) "Wirez"
+    evar    <- newMVar def 
+    wirevar <- newMVar (clockSession_, textAndPosWire, Right ("...", Position 0 0))
     fontDir <- fmap (</> "Library" </> "Fonts") getHomeDirectory
     imgDir  <- fmap (</> "assets" </> "img") getCurrentDirectory
 
@@ -73,26 +73,46 @@ main = do
 
         case mx of
             Left _ -> putStrLn $ "Inhibited"
-            Right pos@(Position x y) -> do
-                let pos2 = Position (x+5) (y+5)
-                M.void $ drawTextAt' r pos $ show pos
-                M.void $ drawTextAt' r pos2 $ show pos2
-        drawBitmap r face (Position 150 0) (face^.bitmapSize) (Scale 1 1) (Rotation 0)
+            Right (text, pos) -> do
+                M.void $ drawTextAt' r pos text
+        drawBitmap r face (Position 0 50) (face^.bitmapSize) (Scale 1 1) (Rotation 0)
 
         swapBuffers window
         shouldClose <- windowShouldClose window
         M.when shouldClose exitSuccess
 
-myWire :: (MonadReader Env m, HasTime t s, Monoid e, Fractional t) => Wire s e m a Position
-myWire = cursor2Pos . asSoonAs . mouseButtonEvent MouseButton'1 MouseButtonState'Pressed
---myWire = whenCursorIsOnScreen . (cursorPositionStartingWith $ Position 0 0) <|> (pure $ Position 0 0)
+--myWire :: (MonadReader Env m, HasTime t s, Monoid e, Fractional t) => Wire s e m a String
+--myWire = whenCursorIsOnScreen . cursorPositionStartingWith (Position 0 0) <|> pure (Position 0 0)
+
+data Transform2d = Transform2d { _t2Position :: Position
+                               , _t2Size     :: Size
+                               , _t2Scale    :: Scale
+                               , _t2Rotation :: Rotation
+                               } deriving (Show)
+
+data Renderable2d a = Renderable2d { _rTransform :: Transform2d
+                                   , _rData      :: a
+                                   , _rRender    :: a -> IO ()
+                                   }
+
+textAndPosWire :: (MonadReader Env m, HasTime t s, Monoid e, Fractional t) => Wire s e m a (String, Position)
+textAndPosWire = (,) <$> stringWire "" <*> posWire 
+
+textWire :: (MonadReader Env m, HasTime t s, Monoid e, Fractional t) => Wire s e m a String
+textWire = ("Window size: " ++) . show <$> asSoonAs . windowResizeEvent 
+
+stringWire :: (MonadReader Env m, HasTime t s, Monoid e, Fractional t) => String -> Wire s e m a String
+stringWire str = asSoonAs . accumE (\b a -> b ++ [a]) str . charEvent
+
+posWire :: (MonadReader Env m, HasTime t s, Monoid e, Fractional t) => Wire s e m a Position
+posWire = cursor2Pos . asSoonAs . mouseButtonEvent MouseButton'1 MouseButtonState'Pressed
 
 -- Animate back and forth horizontally.
-posWire :: (Monad m, Monoid e, HasTime t s, Fractional t) => Wire s e m a Position
-posWire = Position <$> tween <*> 0
+tweenPosWire :: (Monad m, Monoid e, HasTime t s, Fractional t) => Wire s e m a Position
+tweenPosWire = Position <$> tween <*> tween
     where tween1 = for 1 . fmap round (easeInOutExpo (0 :: Double) 200 1)
           tween2 = for 1 . fmap round (easeInOutExpo (200 :: Double) 0 1)
           tween  = tween1 --> tween2 --> tween
 
-cursor2Pos :: (Monad m) => Wire s e m (Double, Double) Position 
+cursor2Pos :: (Monad m) => Wire s e m (Double, Double) Position
 cursor2Pos = arr $ \(x, y) -> Position (round x) (round y)

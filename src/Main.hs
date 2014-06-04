@@ -8,16 +8,12 @@ import           Urza
 import           FRP.Netwire
 import           Control.Monad.Reader hiding (when)
 import qualified Urza.Color as Color
-import           Control.Concurrent.MVar
 import           Graphics.Rendering.OpenGL hiding (Matrix, renderer, get, drawPixels, Bitmap)
 import           Control.Lens hiding ((#), at)
-import qualified Control.Monad as M
 import           System.Directory
 import           System.FilePath ((</>))
-import           System.Exit
 import           Linear hiding (trace)
 import           Debug.Trace
-import           Data.Maybe
 
 
 data Stage = Stage { _sWindowSize      :: Size
@@ -53,43 +49,25 @@ renderStage r (Right (Stage s@(Size w h) c)) = do
     clear [ColorBuffer, DepthBuffer]
     r^.shader.setProjection $ orthoM44 0 (fromIntegral w) 0 (fromIntegral h) 0 1
     r^.shader.setModelview $ eye4
-    r^.shader.setTextColor $ Color.black
+    r^.shader.setTextColor $ Color.yellow
     _ <- drawTextAt' r (Position 0 0) "Hey y'all."
+    _ <- drawTextAt' r (Position 10 10) "Hey y'all."
     return $ Right $ Stage (Size w h) c
+
+stageWire :: Wire TimeDelta () (ReaderT Env Identity) Stage Stage
+stageWire = Stage <$> windowSize <*> pure Color.black <|> pure def
 
 
 main :: IO ()
 main = do
-    wvar    <- initUrza (100,100) (800,600) "Wirez"
+    urza <- initUrza (100, 100) (800, 600) "Urza"
     fontDir <- fmap (</> "Library" </> "Fonts") getHomeDirectory
     r       <- makeAsciiRenderer (fontDir </> "UbuntuMono-R.ttf") 24
+    let stage = def { _iRender = renderStage r
+                    , _iWire   = stageWire
+                    }
+    loopUrza urza stage
 
-    ivar <- newMVar $ def { _iRender = renderStage r
-                          , _iWire = Stage <$> windowSize <*> pure Color.red <|> pure def
-                          }
-
-    M.forever $ do
-        -- Execute Urza callbacks and load up events.
-        pollEvents
-        -- Pop off the oldest event for processing.
-        (events, window) <- takeMVar wvar
-        let (mEvent, events') = if null events
-                                  then (Nothing, [])
-                                  else (Just $ head events, drop 1 events)
-        M.when (isJust mEvent) $ putStrLn $ show mEvent
-        -- Put the rest back for later.
-        putMVar wvar (events', window)
-
-        -- Pre render setup
-        makeContextCurrent $ Just window
-
-
-        -- Process, update and render our app iteration.
-        stepAndRender ivar mEvent
-
-        swapBuffers window
-        shouldClose <- windowShouldClose window
-        M.when shouldClose exitSuccess
 
 myWire :: (MonadReader Env m, Monoid e) => Wire TimeDelta e m Bitmap_Transform2d Bitmap_Transform2d
 myWire = proc (bmp, tfrm) -> do
@@ -124,7 +102,7 @@ cursor2Pos = arr $ \(x, y) -> Position (round x) (round y)
 
 
 windowSize :: Wire s () (ReaderT Env Identity) a Size
-windowSize = traceWire . (arr $ \(w, h) -> Size (fromIntegral w) (fromIntegral h)) . asSoonAs . windowResizeEvent
+windowSize = (arr $ \(w, h) -> Size (fromIntegral w) (fromIntegral h)) . asSoonAs . windowResizeEvent
 
 traceWire :: (Monad m, Show a) => Wire s e m a a
 traceWire = arr (\a -> trace (show a) a)

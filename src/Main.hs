@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE Arrows #-}
 module Main where
 
@@ -18,28 +17,24 @@ import           Debug.Trace
 
 data Stage = Stage { _sWindowSize      :: Size
                    , _sBackgroundColor :: Color4 GLfloat
+                   , _sFace            :: Bitmap_Transform2d
                    } deriving (Show)
-
-instance Default Stage where
-    def = Stage { _sWindowSize = Size 800 600
-                , _sBackgroundColor = Color.black
-                }
 
 type Render a = Renderer -> Either () a -> IO (Either () a)
 
 renderFace :: Render Bitmap_Transform2d
-renderFace _ (Left ()) = do
-    imgDir  <- fmap (</> "assets" </> "img") getCurrentDirectory
-    Just face <- loadBitmap (imgDir </> "face.png")
-    return $ Right (face, def{ _t2Size = trace (show $ face^.bitmapSize) face^.bitmapSize})
+renderFace _ (Left ()) = return $ Left ()
 renderFace r (Right (bmp, tfrm)) = do
     drawBitmap r bmp tfrm
     return $ Right (bmp, tfrm)
 
 
 renderStage :: Render Stage
-renderStage _ (Left ()) = return $ Right def
-renderStage r (Right (Stage s@(Size w h) c)) = do
+renderStage _ (Left ()) = do
+    clearColor $= Color.black
+    clear [ColorBuffer, DepthBuffer]
+    return $ Left ()
+renderStage r (Right (Stage s@(Size w h) c face)) = do
     viewport $= (Position 0 0, s)
     clearColor $= c
     depthFunc $= Just Lequal
@@ -52,10 +47,15 @@ renderStage r (Right (Stage s@(Size w h) c)) = do
     r^.shader.setTextColor $ Color.yellow
     _ <- drawTextAt' r (Position 0 0) "Hey y'all."
     _ <- drawTextAt' r (Position 10 10) "Hey y'all."
-    return $ Right $ Stage (Size w h) c
+    _ <- renderFace r $ Right face
+    return $ Right $ Stage (Size w h) c face
 
-stageWire :: Wire TimeDelta () (ReaderT Env Identity) Stage Stage
-stageWire = Stage <$> windowSize <*> pure Color.black <|> pure def
+
+stageWire :: Wire TimeDelta () (ReaderT InputEnv Identity) Stage Stage
+stageWire = proc (Stage _ bc f) -> do
+    s' <- windowSize -< ()
+    f' <- myWire -< f
+    returnA -< Stage s' bc f'
 
 
 main :: IO ()
@@ -63,45 +63,49 @@ main = do
     urza <- initUrza (100, 100) (800, 600) "Urza"
     fontDir <- fmap (</> "Library" </> "Fonts") getHomeDirectory
     r       <- makeAsciiRenderer (fontDir </> "UbuntuMono-R.ttf") 24
-    let stage = def { _iRender = renderStage r
+
+    imgDir  <- fmap (</> "assets" </> "img") getCurrentDirectory
+    Just bmp <- loadBitmap (imgDir </> "face.png")
+    let face =  (bmp, def{ _t2Size = bmp^.bitmapSize})
+        wini = def :: WindowIteration ()
+        iter = wini { _iRender = renderStage r
                     , _iWire   = stageWire
+                    , _iProcessEv = processInputEnv
+                    , _iData = Right $ Stage { _sWindowSize = Size 800 600
+                                             , _sBackgroundColor = Color.black
+                                             , _sFace = face
+                                             }
                     }
-    loopUrza urza stage
+    loopUrza urza iter
 
 
-myWire :: (MonadReader Env m, Monoid e) => Wire TimeDelta e m Bitmap_Transform2d Bitmap_Transform2d
+myWire :: InputWire Bitmap_Transform2d Bitmap_Transform2d
 myWire = proc (bmp, tfrm) -> do
     pos <- tweenPosWire -< ()
     returnA -< (bmp, tfrm & t2Position .~ pos)
 
 
-textAndPosWire :: (MonadReader Env m, Monoid e) => Wire TimeDelta e m a (String, Position)
-textAndPosWire = (,) <$> stringWire "" <*> posWire
-
-textWire :: (MonadReader Env m, Monoid e) => Wire TimeDelta e m a String
+textWire :: InputWire () String
 textWire = ("Window size: " ++) . show <$> asSoonAs . windowResizeEvent
 
-stringWire :: (MonadReader Env m, Monoid e) => String -> Wire TimeDelta e m a String
-stringWire str = asSoonAs . accumE (\b a -> b ++ [a]) str . charEvent
 
-
-posWire :: (MonadReader Env m, Monoid e) => Wire TimeDelta e m a Position
+posWire :: InputWire () Position
 posWire = cursor2Pos . asSoonAs . mouseButtonEvent MouseButton'1 MouseButtonState'Pressed
 
 
 -- Animate back and forth horizontally.
-tweenPosWire :: (Monad m, Monoid e) => Wire TimeDelta e m a Position
+tweenPosWire :: InputWire () Position
 tweenPosWire = Position <$> tween <*> tween
     where tween1 = for 1 . fmap round (easeInOutExpo (0 :: Double) 200 1)
           tween2 = for 1 . fmap round (easeInOutExpo (200 :: Double) 0 1)
           tween  = tween1 --> tween2 --> tween
 
 
-cursor2Pos :: (Monad m) => Wire TimeDelta e m (Double, Double) Position
+cursor2Pos :: InputWire (Double, Double) Position
 cursor2Pos = arr $ \(x, y) -> Position (round x) (round y)
 
 
-windowSize :: Wire s () (ReaderT Env Identity) a Size
+windowSize :: InputWire a Size
 windowSize = (arr $ \(w, h) -> Size (fromIntegral w) (fromIntegral h)) . asSoonAs . windowResizeEvent
 
 traceWire :: (Monad m, Show a) => Wire s e m a a

@@ -29,4 +29,5 @@ executable voxy
                        linear -any,
                        mtl -any,
                        containers -any,
-                       netwire >= 5.0
+                       netwire >= 5.0,
+                       random -any

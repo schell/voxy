@@ -106,7 +106,7 @@ rToResetTree = proc (QTree bb _ _) -> do
 
 updateQTreeRootSize :: InputWire AppTree AppTree
 updateQTreeRootSize = proc t@(QTree (Rectangle x y _ _) _ _) -> do
-    (ww,wh) <- traceWith "window" . arr (\(a, b) -> (fromIntegral a, fromIntegral b)) . useNow . windowResizeEvent -< ()
+    (ww,wh) <- arr (\(a, b) -> (fromIntegral a, fromIntegral b)) . useNow . windowResizeEvent -< ()
     returnA -< foldl (\t' (QLeaf bb a) -> insert bb a t') (QT.empty (Rectangle x y ww wh)) $ leaves t
 
 
@@ -115,7 +115,7 @@ getOneBox = proc _ -> do
     (x,y)   <- asSoonAs . mouseButtonEvent MouseButton'1 MouseButtonState'Pressed -< ()
     (dx,dy) <- asSoonAs . cursorMoveEvent . arr (const ()) <|> pass -< (x,y)
     mouseup <- mouseButtonEvent MouseButton'1 MouseButtonState'Released -< ()
-    until   -< (Rectangle x y (dx - x) (dy - y), mouseup)
+    until   -< (absRect $ Rectangle x y (dx - x) (dy - y), mouseup)
 
 drawOneRect :: InputWire App App
 drawOneRect = proc app -> do

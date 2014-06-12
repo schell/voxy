@@ -12,7 +12,6 @@ import           Graphics.Rendering.OpenGL hiding (Matrix, renderer, get, drawPi
 import           Linear hiding (trace)
 import           Data.List hiding (insert)
 import           QTree as QT
-import           Debug.Trace
 
 
 renderAppWindow :: (Renderer -> a -> IO ()) -> Render (AppWindow a)
@@ -77,15 +76,9 @@ renderApp r (App cur qt _) = do
 
 renderSelectionRect :: Renderer -> BoundingBox -> IO ()
 renderSelectionRect r bb = do
-    let rec = Rectangle x y w h
-        x   = if width bb < 0 then U.left bb + width bb else U.left bb
-        y   = if height bb < 0 then U.top bb + height bb else U.top bb
-        w   = abs $ width bb
-        h   = abs $ height bb
-    M.when (areaOf rec > 0) $ fillPath_ r $ do
+    M.when (areaOf bb > 0) $ fillPath_ r $ do
         setColor $ Color.white
-        uncurryRectangle rectangleAt $ trace (show rec) rec
-
+        uncurryRectangle rectangleAt bb
 
 
 renderFace :: Render Bitmap_Transform2d

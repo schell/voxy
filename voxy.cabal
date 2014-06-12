@@ -28,6 +28,7 @@ executable voxy
                        urzas-toolbox -any,
                        linear -any,
                        mtl -any,
+                       transformers -any,
                        containers -any,
                        netwire >= 5.0,
                        random -any

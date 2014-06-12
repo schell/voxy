@@ -125,15 +125,6 @@ drawOneRect = proc app -> do
 drawManyRects :: InputWire App App
 drawManyRects = pass >-- drawOneRect --> drawManyRects
 
-pass :: Monad m => Wire s e m a a
-pass = arr id
-
-mouseDownLeft :: InputWire () (Event (Double, Double))
-mouseDownLeft = mouseButtonEvent MouseButton'1 MouseButtonState'Pressed
-
-mouseUpLeft :: InputWire () (Event (Double, Double))
-mouseUpLeft = mouseButtonEvent MouseButton'1 MouseButtonState'Released
-
 -- Animate back and forth horizontally.
 tweenPosWire :: InputWire () Position
 tweenPosWire = Position <$> tween <*> tween

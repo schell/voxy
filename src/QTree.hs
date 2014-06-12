@@ -2,13 +2,16 @@ module QTree (
     QTree(..),
     QLeaf(..),
     empty,
-    insert
+    insert,
+    elems,
+    keys,
+    bounds,
+    leaves
 ) where
 
 import Urza.Math.Rectangle
 import Urza.Types
 import Data.Maybe
-import Debug.Trace
 
 type Extents a = (QTree a, QTree a, QTree a, QTree a)
 
@@ -24,6 +27,21 @@ data QLeaf a = QLeaf { _qlBounds :: BoundingBox
 
 insert :: BoundingBox -> a -> QTree a -> QTree a
 insert bb a q = fromMaybe q $ tryInsert bb a q
+
+leaves :: QTree a -> [QLeaf a]
+leaves (QTree _ Nothing ls) = ls
+leaves (QTree _ (Just (q1,q2,q3,q4)) ls) = ls ++ concatMap leaves [q1,q2,q3,q4]
+
+elems :: QTree a -> [a]
+elems (QTree _ Nothing ls) = map leafVal ls
+elems (QTree _ (Just (q1,q2,q3,q4)) ls) = (map leafVal ls) ++ concatMap elems [q1,q2,q3,q4]
+
+keys :: QTree a -> [BoundingBox]
+keys (QTree bb Nothing ls) = bb:map leafBox ls
+keys (QTree bb (Just (q1,q2,q3,q4)) ls) = bb:map leafBox ls ++ concatMap keys [q1,q2,q3,q4]
+
+bounds :: QTree a -> BoundingBox
+bounds (QTree bb _ _) = bb
 
 empty :: BoundingBox -> QTree a
 empty = emptyBranch
@@ -54,6 +72,12 @@ boundsToQuads bb = (q1',q2',q3',q4')
 
 leaf :: BoundingBox -> a -> QLeaf a
 leaf bb a = QLeaf bb a
+
+leafVal :: QLeaf a -> a
+leafVal (QLeaf _ a) = a
+
+leafBox :: QLeaf a -> BoundingBox
+leafBox (QLeaf bb _) = bb
 
 emptyBranch :: BoundingBox -> QTree a
 emptyBranch bb = QTree bb Nothing []

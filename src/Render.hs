@@ -12,6 +12,7 @@ import           Graphics.Rendering.OpenGL hiding (Matrix, renderer, get, drawPi
 import           Linear hiding (trace)
 import           Data.List hiding (insert)
 import           QTree as QT
+import           Debug.Trace
 
 
 renderAppWindow :: (Renderer -> a -> IO ()) -> Render (AppWindow a)
@@ -60,14 +61,31 @@ renderStage r (Stage cs ss) = do
 
 
 renderApp :: Renderer -> App -> IO ()
-renderApp r (App cur bs _ (x,y)) = do
-    putStr $ if x > y then "" else ""
-    M.when (areaOf cur > 0) $ fillPath_ r $ do
+renderApp r (App cur qt _) = do
+    renderSelectionRect r cur
+    renderQTree r qt
+    forM_ (leaves qt) $ \(QLeaf b (e, c)) -> do
+        fillPath_ r $ do
+            setColor $ alpha c 0.5
+            uncurryRectangle rectangleAt b
+        strokePath_ r $ do
+            setColor c
+            uncurryRectangle rectangleAt b
+        r^.shader.setTextColor $ Color4 0 0 0 0.8
+        drawTextAt' r (Position (round $ U.left b) (round $ U.top b)) e
+
+
+renderSelectionRect :: Renderer -> BoundingBox -> IO ()
+renderSelectionRect r bb = do
+    let rec = Rectangle x y w h
+        x   = if width bb < 0 then U.left bb + width bb else U.left bb
+        y   = if height bb < 0 then U.top bb + height bb else U.top bb
+        w   = abs $ width bb
+        h   = abs $ height bb
+    M.when (areaOf rec > 0) $ fillPath_ r $ do
         setColor $ Color.white
-        uncurryRectangle rectangleAt cur
-    forM_ (reverse bs) $ \(c, bb) -> fillPath_ r $ do
-        setColor c
-        uncurryRectangle rectangleAt bb
+        uncurryRectangle rectangleAt $ trace (show rec) rec
+
 
 
 renderFace :: Render Bitmap_Transform2d
@@ -77,23 +95,14 @@ renderFace r (Right (bmp, tfrm)) = do
     return $ Right (bmp, tfrm)
 
 
-renderQTree :: Renderer -> QTree String -> IO ()
-renderQTree r (QTree bb mbs ls) = do
+renderQTree :: Renderer -> QTree a -> IO ()
+renderQTree r (QTree bb mbs _) = do
     fillPath_ r $ do
         setColor $ Color4 1 1 1 0.3
         uncurryRectangle rectangleAt bb
     strokePath_ r $ do
-        setColor $ Color4 1 1 1 0.6
+        setColor $ Color4 0 0 0 1
         uncurryRectangle rectangleAt bb
-    forM_ ls $ \(QLeaf b e) -> do
-        fillPath_ r $ do
-            setColor $ Color4 1 1 0 0.3
-            uncurryRectangle rectangleAt b
-        strokePath_ r $ do
-            setColor $ Color4 1 1 0 0.6
-            uncurryRectangle rectangleAt b
-        r^.shader.setTextColor $ Color4 0 0 0 0.8
-        drawTextAt' r (Position (round $ U.left b) (round $ U.top b)) e
     case mbs of
         Nothing -> return ()
         Just (a,b,c,d) -> do

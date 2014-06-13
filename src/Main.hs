@@ -48,7 +48,7 @@ randomColors = do
 
 main :: IO ()
 main = do
-    urza <- initUrza (100, 100) (800, 600) "Urza"
+    urza <- initUrza (0, 0) (400, 400) "quad-trees!"
     fontDir <- fmap (</> "Library" </> "Fonts") getHomeDirectory
     r       <- makeAsciiRenderer (fontDir </> "UbuntuMono-R.ttf") 16
 
@@ -58,7 +58,7 @@ main = do
         iter = wini { _iRender = renderAppWindow renderApp r
                     , _iWire   = windowWire appWire
                     , _iProcessEv = processInputEnv
-                    , _iData = Right $ AppWindow { _awSize = Size 800 600
+                    , _iData = Right $ AppWindow { _awSize = Size 400 400
                                                  , _awBackgroundColor = Color.black
                                                  , _awApp = app rColors
                                                  }
@@ -68,12 +68,13 @@ main = do
 type AppTree = QTree (BoundingBox, Color4 Double)
 
 newQTree :: AppTree
-newQTree = QT.empty $ Rectangle 0 0 800 600
+newQTree = QT.empty $ Rectangle 0 0 400 400
 
 newApp :: [Color4 Double] -> App
 newApp colors = App { appInputRect = zeroRect
                     , appTree = newQTree
                     , appColors = colors
+                    , appCollisions = []
                     }
 
 windowWire :: (InputWire a a) -> InputWire (AppWindow a) (AppWindow a)

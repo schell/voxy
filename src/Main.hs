@@ -65,7 +65,7 @@ main = do
                     }
     loopUrza urza iter
 
-type AppTree = QTree (String, Color4 Double)
+type AppTree = QTree (BoundingBox, Color4 Double)
 
 newQTree :: AppTree
 newQTree = QT.empty $ Rectangle 0 0 800 600
@@ -85,13 +85,19 @@ windowWire wire = appWire' <|> pass
 
 appWire :: InputWire App App
 appWire = app . (captureRect <|> pass) . drawManyRects
-    where app = App <$> arr appInputRect <*> qtreeWire . arr appTree <*> pass . arr appColors
-          captureRect = proc (App ir t (c:cs)) -> do
+    where app = App <$> arr appInputRect
+                    <*> qtreeWire . arr appTree
+                    <*> pass . arr appColors
+                    <*> collisions
+          captureRect = proc (App ir t (c:cs) cols) -> do
                             _ <- useNow . mouseUpLeft -< ()
                             let Rectangle x y w h = ir
-                                [x',y',w',h'] = map round [x,y,w,h] :: [Int]
-                                str = show $ Rectangle x' y' w' h'
-                            returnA -< App zeroRect (insert ir (str, c) t) cs
+                                [x',y',w',h'] = map (fromIntegral . round) [x,y,w,h]
+                                ir' = Rectangle x' y' w' h'
+                            returnA -< App zeroRect (insert ir' (ir', c) t) cs cols
+          collisions = proc app@(App _ t _ _) -> do
+                           p <- asSoonAs . cursorMoveEvent <|> pure (0,0) -< ()
+                           returnA -< queryPoint p t
 
 qtreeWire :: InputWire AppTree AppTree
 qtreeWire = rToResetTree        <|>

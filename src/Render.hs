@@ -60,10 +60,10 @@ renderStage r (Stage cs ss) = do
 
 
 renderApp :: Renderer -> App -> IO ()
-renderApp r (App cur qt _) = do
+renderApp r (App cur qt _ cols) = do
     renderSelectionRect r cur
     renderQTree r qt
-    forM_ (leaves qt) $ \(QLeaf b (e, c)) -> do
+    forM_ (leaves qt) $ \(QLeaf b (_, c)) -> do
         fillPath_ r $ do
             setColor $ alpha c 0.5
             uncurryRectangle rectangleAt b
@@ -71,7 +71,11 @@ renderApp r (App cur qt _) = do
             setColor c
             uncurryRectangle rectangleAt b
         r^.shader.setTextColor $ Color4 0 0 0 0.8
-        drawTextAt' r (Position (round $ U.left b) (round $ U.top b)) e
+        drawTextAt' r (Position (round $ U.left b) (round $ U.top b)) $ show b
+    forM_ cols $ \(b, _) -> do
+        strokePath_ r $ do
+            setColor Color.red
+            uncurryRectangle rectangleAt b
 
 
 renderSelectionRect :: Renderer -> BoundingBox -> IO ()

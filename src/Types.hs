@@ -21,8 +21,9 @@ data AppWindow a = AppWindow { _awSize            :: Size
                              }
 
 data App = App { appInputRect :: BoundingBox
-               , appTree    :: QTree (String, Color4 Double)
+               , appTree    :: QTree (BoundingBox, Color4 Double)
                , appColors  :: [Color4 Double]
+               , appCollisions :: [(BoundingBox, Color4 Double)]
                } deriving (Show)
 
 type Render a = Renderer -> Either () a -> IO (Either () a)

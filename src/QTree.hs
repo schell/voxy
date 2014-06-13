@@ -6,7 +6,10 @@ module QTree (
     elems,
     keys,
     bounds,
-    leaves
+    leaves,
+    queryWith,
+    queryLeavesWith,
+    queryPoint
 ) where
 
 import Urza.Math.Rectangle
@@ -27,6 +30,23 @@ data QLeaf a = QLeaf { _qlBounds :: BoundingBox
 
 insert :: BoundingBox -> a -> QTree a -> QTree a
 insert bb a q = fromMaybe q $ tryInsert bb a q
+
+queryPoint :: (Double, Double) -> QTree a -> [a]
+queryPoint (x, y) = queryWith (`containsRect` Rectangle x y 0 0)
+
+queryWith :: (BoundingBox -> Bool) -> QTree a -> [a]
+queryWith f t = map leafVal $ queryLeavesWith f t
+
+queryLeavesWith :: (BoundingBox -> Bool) -> QTree a -> [QLeaf a]
+queryLeavesWith f (QTree bb Nothing ls) =
+    if f bb then catMaybes $ map (queryLeafWith f) ls else []
+queryLeavesWith f (QTree bb (Just qs) ls) =
+    if f bb
+      then concatMap (queryLeavesWith f) (exToList qs) ++ catMaybes (map (queryLeafWith f) ls)
+      else []
+
+queryLeafWith :: (BoundingBox -> Bool) -> QLeaf a -> Maybe (QLeaf a)
+queryLeafWith f (QLeaf bb a) = if f bb then Just $ QLeaf bb a else Nothing
 
 leaves :: QTree a -> [QLeaf a]
 leaves (QTree _ Nothing ls) = ls
@@ -81,3 +101,6 @@ leafBox (QLeaf bb _) = bb
 
 emptyBranch :: BoundingBox -> QTree a
 emptyBranch bb = QTree bb Nothing []
+
+exToList :: (a,a,a,a) -> [a]
+exToList (a,b,c,d) = [a,b,c,d]

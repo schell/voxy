@@ -14,10 +14,10 @@ category:            Graphics
 build-type:          Simple
 cabal-version:       >=1.8
 data-dir:            data
-data-files:          shaders/*.frag,
-                     shaders/*.vert
 
 executable voxy
+  ghc-options:         -rtsopts -fprof-auto -fprof-cafs
+
   hs-source-dirs:      src
   main-is:             Main.hs
   build-depends:       base >=4.6,

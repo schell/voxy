@@ -35,22 +35,11 @@ w1' >-- w2' =
           _       -> do (m1, w1) <- stepWire w1' ds mx'
                         m1 `seq` return (m1, w1 >-- w2)
 
-
-randomColors :: IO [Color4 Double]
-randomColors = do
-    a <- newStdGen
-    b <- newStdGen
-    c <- newStdGen
-    let rs = randomRs (0, 1) a
-        gs = randomRs (0, 1) b
-        bs = randomRs (0, 1) c
-    return $ zipWith3 (\r g b' -> Color4 r g b' 1) rs gs bs
-
 main :: IO ()
 main = do
     urza <- initUrza (0, 0) (400, 400) "quad-trees!"
     fontDir <- fmap (</> "Library" </> "Fonts") getHomeDirectory
-    r       <- makeAsciiRenderer (fontDir </> "UbuntuMono-R.ttf") 16
+    r       <- makeAsciiRenderer (fontDir </> "UbuntuMono-R.ttf") 8
 
     rColors <- randomColors
     let wini = def :: WindowIteration ()
@@ -65,7 +54,20 @@ main = do
                     }
     loopUrza urza iter
 
+
 type AppTree = QTree (BoundingBox, Color4 Double)
+
+
+randomColors :: IO [Color4 Double]
+randomColors = do
+    a <- newStdGen
+    b <- newStdGen
+    c <- newStdGen
+    let rs = randomRs (0, 1) a
+        gs = randomRs (0, 1) b
+        bs = randomRs (0, 1) c
+    return $ zipWith3 (\r g b' -> Color4 r g b' 1) rs gs bs
+
 
 newQTree :: AppTree
 newQTree = QT.empty $ Rectangle 0 0 400 400
@@ -89,7 +91,7 @@ appWire = app . (captureRect <|> pass) . drawManyRects
     where app = App <$> arr appInputRect
                     <*> qtreeWire . arr appTree
                     <*> pass . arr appColors
-                    <*> collisions
+                    <*> collisions <|> pass
           captureRect = proc (App ir t (c:cs) cols) -> do
                             _ <- useNow . mouseUpLeft -< ()
                             let Rectangle x y w h = ir
@@ -97,11 +99,13 @@ appWire = app . (captureRect <|> pass) . drawManyRects
                                 ir' = Rectangle x' y' w' h'
                             returnA -< App zeroRect (insert ir' (ir', c) t) cs cols
           collisions = proc app@(App _ t _ _) -> do
-                           p <- asSoonAs . cursorMoveEvent <|> pure (0,0) -< ()
+                           p <- useNow . cursorMoveEvent <|> pure (0,0) -< ()
                            returnA -< queryPoint p t
+
 
 qtreeWire :: InputWire AppTree AppTree
 qtreeWire = rToResetTree        <|>
+            --leftMouseDeleteCols <|>
             updateQTreeRootSize <|>
             pass
 
@@ -110,6 +114,10 @@ rToResetTree = proc (QTree bb _ _) -> do
     useNow_ . onCharEvent 'r' -< ()
     returnA -< (QTree bb Nothing [])
 
+--leftMouseDeleteCols :: InputWire AppTree AppTree
+--leftMouseDeleteCols = proc qt -> do
+--    useNow_ . mouseButtonEvent MouseButton'2 MouseButtonState'Released -< ()
+--    returnA -<
 
 updateQTreeRootSize :: InputWire AppTree AppTree
 updateQTreeRootSize = proc t@(QTree (Rectangle x y _ _) _ _) -> do
@@ -138,14 +146,4 @@ tweenPosWire = Position <$> tween <*> tween
     where tween1 = for 1 . fmap round (easeInOutExpo (0 :: Double) 200 1)
           tween2 = for 1 . fmap round (easeInOutExpo (200 :: Double) 0 1)
           tween  = tween1 --> tween2 --> tween
-
-windowSize :: InputWire a Size
-windowSize = (arr $ \(w, h) -> Size (fromIntegral w) (fromIntegral h)) . asSoonAs . windowResizeEvent
-
-traceWire :: (Monad m, Show a) => Wire s e m a a
-traceWire = arr (\a -> trace (show a) a)
-
-traceWith :: (Monad m) => String -> Wire s e m a a
-traceWith s = arr (\a -> trace s a)
-
 

@@ -28,20 +28,3 @@ data App = App { appInputRect :: BoundingBox
 
 type Render a = Renderer -> Either () a -> IO (Either () a)
 
-
-stage :: Stage
-stage = Stage { _sColors = [ ColorButton Color.black
-                           , ColorButton Color.white
-                           , ColorButton Color.red
-                           , ColorButton Color.green
-                           , ColorButton Color.blue
-                           , ColorButton Color.yellow
-                           ]
-              , _sSizes  = [ SizeButton 1
-                           , SizeButton 2
-                           , SizeButton 4
-                           , SizeButton 8
-                           , SizeButton 16
-                           ]
-              }
-

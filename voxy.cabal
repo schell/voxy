@@ -31,4 +31,8 @@ executable voxy
                        transformers -any,
                        containers -any,
                        netwire >= 5.0,
-                       random -any
+                       JuicyPixels -any,
+                       FontyFruity -any,
+                       Rasterific -any,
+                       random -any,
+                       text -any

@@ -16,7 +16,7 @@ cabal-version:       >=1.8
 data-dir:            data
 
 executable voxy
-  ghc-options:         -rtsopts -fprof-auto -fprof-cafs
+  ghc-options:         -Wall -rtsopts -fprof-auto -fprof-cafs
 
   hs-source-dirs:      src
   main-is:             Main.hs
@@ -30,7 +30,7 @@ executable voxy
                        mtl -any,
                        transformers -any,
                        containers -any,
-                       netwire >= 5.0,
+                       wires >= 0.1 && <0.2,
                        JuicyPixels -any,
                        FontyFruity -any,
                        Rasterific -any,

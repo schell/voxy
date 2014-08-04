@@ -1,7 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE Arrows #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# OPTIONS_GHC -fno-warn-orphans #-}
 module Jake (
     module J,
     jakeMain
@@ -10,17 +7,11 @@ module Jake (
 import Jake.Game as J
 import Jake.Rendering as J
 import Jake.Types as J
-import Jake.Wires as J
+import Jake.State as J
 
-import           Prelude hiding ((.), id, until)
 import           Urza as U hiding (fill, stroke)
-import           Control.Concurrent
-import           Control.Monad as M
-import           Control.Monad.Reader
-import           Control.Wire hiding (loop)
-import           Control.Wire.Core
-import           System.Exit
-import           Render
+import           Types
+import           Core
 
 jakeMain :: IO ()
 jakeMain = do
@@ -32,38 +23,17 @@ jakeMain = do
         sprites     = tileSprites bmp
         renderGame' = renderGame jr sprites
         renderApp   = renderGame'
-        env         = def :: InputEnv
+        ienv        = def :: InputEnv
+        aenv        = AppEnv { aeTime = 0
+                             , aeDelta = 1/60
+                             , aeDeltaAcc = 0
+                             }
+        env         = Env { inputEnv = ienv
+                          , appEnv = aenv
+                          }
 
-    mainLoop wvar renderApp env gameWire clockTiming game
+    mainLoop wvar renderApp gameState env game
 
-mainLoop :: WindowVar
-          -> Render Game
-          -> InputEnv
-          -> GameWire () Game
-          -> Timing IO
-          -> Game
-          -> IO ()
-mainLoop wvar render inputEnv wire timing edata = do
-    -- Let GLFW-b load up our input events
-    pollEvents
-    (events, window) <- takeMVar wvar
-    putMVar wvar ([], window)
 
-    -- Make the rendering context current.
-    makeContextCurrent $ Just window
-    -- Process an event into the environment.
-    let inputEnv' = foldl foldInput inputEnv events
-    (dt, timing') <- stepTiming timing
 
-    let Output edata' wire' = runReader (runReaderT (stepWire wire dt ()) inputEnv') edata
-    edata'' <- render edata'
-
-    -- GLFW-b housekeeping.
-    swapBuffers window
-    shouldClose <- windowShouldClose window
-    M.when shouldClose exitSuccess
-
-    -- Clean out the events so they don't just build up forever.
-    let inputEnv'' = inputEnv'{ _ienvEvents = [] }
-    mainLoop wvar render inputEnv'' wire' timing' edata''
 

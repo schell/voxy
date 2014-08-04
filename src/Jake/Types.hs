@@ -1,22 +1,12 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Jake.Types where
 
 import           Prelude hiding ((.), id, until)
 import           Urza as U hiding (fill, stroke)
 import           Linear
-import           Control.Wire
-import           Control.Monad.Reader
-import           Control.Monad.Identity
+import           Types
 
-
-type GameEnv = ReaderT InputEnv (ReaderT Game Identity)
-
-type GameWire a b = Wire GameEnv a b
-
-asksGame :: (MonadTrans t, MonadReader r m) => (r -> a) -> t m a
-asksGame = lift . asks
-
-runGame :: Reader r1 (Reader r a) -> r1 -> r -> a
-runGame f inputEnv game = runReader (runReader f inputEnv) game
+type JakeApp = App Game
 
 type Frame = Int
 
@@ -45,6 +35,8 @@ data Jake = Jake { _jAction   :: JakeAction
                  } deriving (Show)
 
 type Movement = (Acceleration, Velocity, Position)
+
+type MovementCorrection = (Acceleration -> Acceleration, Velocity -> Velocity, Position -> Position)
 
 data JakeRenderer = JakeRenderer { _jrShader         :: ShaderProgram
                                  , _jrSpriteRunning  :: Sprite

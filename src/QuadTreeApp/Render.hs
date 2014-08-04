@@ -16,37 +16,37 @@ renderApp r (App cur qt _ cols) = do
     forM_ (leaves qt) $ \(QLeaf b (_, c)) -> do
         fillPath_ r $ do
             setColor $ alpha c 0.5
-            uncurryRectangle rectangleAt b
+            uncurryRectangle rectangle b
         strokePath_ r $ do
             setColor c
-            uncurryRectangle rectangleAt b
+            uncurryRectangle rectangle b
         r^.shader.setTextColor $ Color4 0 0 0 0.8
         drawTextAt' r (Position (round $ U.left b) (round $ U.top b)) $ show b
     forM_ cols $ \(b, _) -> do
         strokePath_ r $ do
             setColor Color.red
-            uncurryRectangle rectangleAt b
+            uncurryRectangle rectangle b
 
 renderSelectionRect :: Renderer -> BoundingBox -> IO ()
 renderSelectionRect r bb = do
     M.when (areaOf bb > 0) $ fillPath_ r $ do
         setColor $ Color.white
-        uncurryRectangle rectangleAt bb
+        uncurryRectangle rectangle bb
 -}
 
 renderQTree :: ShaderProgram -> QTree a -> IO ()
 renderQTree s (QTree bb mbs lvs) = do
     fillPath_ s $ do
         setColor $ Color4 1 1 1 0.3
-        uncurryRectangle rectangleAt bb
+        rectangle bb
     strokePath_ s $ do
         setColor $ Color4 0 0 0 1
-        uncurryRectangle rectangleAt bb
+        rectangle bb
     case mbs of
         Nothing -> return ()
         Just (a,b,c,d) -> do
             forM_ [a,b,c,d] $ renderQTree s
     forM_ lvs $ \leaf -> strokePath_ s $ do
         setColor $ Color4 0 1 0 1
-        uncurryRectangle rectangleAt (_qlBounds leaf)
+        rectangle $ _qlBounds leaf
 

@@ -5,8 +5,7 @@ import           Urza as U
 import           Control.Lens hiding ((#), at)
 import           Graphics.Rendering.OpenGL hiding (Matrix, renderer, get, drawPixels, Bitmap)
 import           Linear hiding (trace)
-
-type Render a = a -> IO a
+import           Types
 
 renderViewport :: ShaderProgram -> Int -> Int -> Color4 GLfloat -> IO ()
 renderViewport shdr w h c = do

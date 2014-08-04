@@ -2,43 +2,98 @@ module Jake.Game where
 
 import           Urza as U hiding (fill, stroke)
 import           Urza.Data.QTree as Q
-import           Data.List as L
 --import           Control.Wire
 import           System.Directory
 import           System.FilePath ((</>))
 import           Linear hiding (trace)
 import           Jake.Types
 import           Debug.Trace
+import           Data.Maybe
+import           Data.List as L
+
+-- | Given the current state of the game, find the current correct position
+-- for Jake.
+correctJakesMovement :: Game -> MovementCorrection
+correctJakesMovement g = do
+    let jp = getJakesPosition g
+        tm = _gTileMap g
+        mCol = getCollision jp tm
+    case mCol of
+        Nothing    -> (id,id,id)
+        Just (b,_) -> do
+            let b' = expandRect b $ V2 0.1 0.1
+                vs = map (jp -) $ sortByMagnitude $ projectionVectors jp $ b'
+            case findNonCollisionPoints vs tm of
+                []  -> (id,id,id)
+                p:_ -> jp `correctionTo` p
+
+correctionTo :: Position -> Position -> MovementCorrection
+correctionTo p p' =
+    let dp@(V2 dx dy) = p - p'
+        ux  = if abs dx > 0 then 0 else 1
+        uy  = if abs dy > 0 then 0 else 1
+        u   = V2 ux uy
+    in ((* u), (* u), (+ (-1 * dp)))
+
+findNonCollisionPoints :: [V2 Double] -> TileMap -> [V2 Double]
+findNonCollisionPoints vs tm =
+    let cs = map (`getCollision` tm) vs
+        zs = zip cs vs
+        fs = map snd $ filter (isNothing . fst) zs
+    in fs
+
+getCollision :: V2 Double -> TileMap -> Maybe (BoundingBox, Tile)
+getCollision p = getCollisionWith (pointOnRect p)
+
+getCollisionWith :: (BoundingBox -> Bool) -> TileMap -> Maybe (BoundingBox, Tile)
+getCollisionWith f = listToMaybe . queryWith f . makeQuadTree
+
+getJakesPosition :: Game -> V2 Double
+getJakesPosition g = p
+    where (_,_,p) = _jMovement $ _gJake g
+
+jakesPosition :: Game -> V2 Double
+jakesPosition = getJakesPosition
 
 
-getCollision :: Game -> Maybe (V2 Double, Tile)
-getCollision g =
-    case queryPoint jp qt of
-        []   -> trace "no collision" Nothing
-        cols -> trace (show $ collision cols) collision cols
-        where collision = Just . head . {-sortBy smaller . -}map (toSep jp)
-              qt = makeQuadTree $ _gTileMap g
-              toSep :: V2 Double -> (BoundingBox, a) -> (V2 Double, a)
-              toSep p (bb,t) = (separatingAxis p bb, t)
-              (jp,_,_) = _jMovement $ _gJake g
-              smaller (v1,_) (v2,_) = magnitude v1 `compare` magnitude v2
+separate :: V2 Double -> BoundingBox -> V2 Double
+separate p r = p - smallestProjectionVector p r
 
 
-separatingAxis :: V2 Double -> BoundingBox -> V2 Double
-separatingAxis (V2 px py) r =
-    let x = px - U.left r
-        y = py - U.top r
-    in if abs x < abs y then V2 x 0 else V2 0 y
+smallestProjectionVector :: V2 Double -> BoundingBox -> V2 Double
+smallestProjectionVector v r =
+    let v':_ = sortByMagnitude $ projectionVectors v r
+    in v'
+
+-- | Sorts a list of vectors by magnitude in ascending order.
+sortByMagnitude :: [V2 Double] -> [V2 Double]
+sortByMagnitude vs = sortBy (\a b' -> magnitude a `compare` magnitude b') vs
+
+-- | Gives a list of all four possible projections along each separating axis.
+projectionVectors :: V2 Double -> BoundingBox -> [V2 Double]
+projectionVectors (V2 x y) r =
+    let t  = V2 0             (y - top r)
+        l  = V2 (x - left r)  0
+        b  = V2 0             (y - bottom r)
+        r' = V2 (x - right r) 0
+    in [t,l,b,r']
+
+
+
+distanceTo :: (Double, Double) -> (Double, Double) -> Double
+distanceTo (x,y) (z,w) = sqrt $ dx * dx + dy * dy
+    where dx = z - x
+          dy = w - y
 
 
 magnitude :: V2 Double -> Double
-magnitude (V2 x y) = sqrt (x*x) + (y*y)
+magnitude (V2 x y) = sqrt ((x*x) + (y*y))
 
 
 makeQuadTree :: TileMap -> QTree (BoundingBox, Tile)
 makeQuadTree = foldl accQTree (Q.empty bnds) . filter notEmpty . concatStamp
     where accQTree qt (x,y,t) = Q.insert (bb x y) (bb x y, t) qt
-          bb x y = makeBox $ V2 (fromIntegral x) (fromIntegral y)
+          bb x y = makeBox (V2 x y)
           bnds = Rectangle 0 0 500 500 :: BoundingBox
           notEmpty :: (a, a, Tile) -> Bool
           notEmpty (_,_,Empty) = False
@@ -49,11 +104,6 @@ makeBox :: V2 Double -> BoundingBox
 makeBox (V2 x y) = Rectangle (x*tw) (y*th) tw th
     where V2 tw th = tileSize
 
-
-distanceTo :: (Double, Double) -> (Double, Double) -> Double
-distanceTo (x,y) (z,w) = sqrt $ dx * dx + dy * dy
-    where dx = z - x
-          dy = w - y
 
 -- | Concats a 2d array, 'stamping' each item with its (x,y) index.
 concatStamp :: Num i => [[a]] -> [(i,i,a)]
@@ -106,9 +156,10 @@ spriteBitmap = do
     return bmp
 
 tilemap :: TileMap
-tilemap = air ++ [ground]
-    where air    = replicate 9 $ replicate 10 Empty
-          ground = replicate 10 $ Tile 0
+tilemap = air ++ [ground, uground]
+    where air     = replicate 8 $ replicate 10 Empty
+          ground  = [Tile 0] ++ replicate 8 Empty ++ [Tile 0]
+          uground = replicate 10 $ Tile 0
 
 tileSize :: V2 Double
 tileSize = V2 40 40
@@ -136,7 +187,7 @@ jakeTalkingSprite bmp = SpriteSheet bmp [f1,f2] tileSizedTfrm 0
           f2 = Rectangle 0 40 40 40
 
 jakeToon :: Jake
-jakeToon = Jake (JakeRunning 0) (V2 0 0, V2 0 0, V2 0 0)
+jakeToon = Jake (JakeRunning 0) (V2 0 0, V2 0 0, V2 100 100)
 
 jakeRenderer :: Bitmap -> ShaderProgram -> JakeRenderer
 jakeRenderer bmp shdr =

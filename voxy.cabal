@@ -30,9 +30,40 @@ executable voxy
                        mtl -any,
                        transformers -any,
                        containers -any,
-                       wires >= 0.1 && <0.2,
+                       --wires >= 0.1 && <0.2,
+                       JuicyPixels -any,
+                       FontyFruity -any,
+                       Rasterific -any,
+                       random -any,
+                       text -any,
+                       time -any
+
+executable nodes
+  buildable:           False
+  ghc-options:         -Wall -rtsopts -fprof-auto -fprof-cafs
+  hs-source-dirs:      src
+  main-is:             Nodes.hs
+  build-depends:       base >=4.6,
+                       lens -any,
+                       OpenGL -any,
+                       directory -any,
+                       filepath -any,
+                       urzas-toolbox -any,
+                       linear -any,
+                       mtl -any,
+                       transformers -any,
+                       containers -any,
+                       --wires >= 0.1 && <0.2,
                        JuicyPixels -any,
                        FontyFruity -any,
                        Rasterific -any,
                        random -any,
                        text -any
+
+executable wire
+  ghc-options:         -Wall
+  hs-source-dirs:      src
+  main-is:             Wire.hs
+  build-depends:       base >=4.6,
+                       time -any,
+                       mtl -any

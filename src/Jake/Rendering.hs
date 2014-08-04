@@ -2,12 +2,12 @@ module Jake.Rendering where
 
 import           Prelude hiding ((.), id, until)
 import           Urza as U hiding (fill, stroke)
-import           Urza.Data.QTree
 import           Control.Monad
 import           Control.Monad.State
 import           Linear
 import           Jake.Types
 import           Jake.Game
+import           Types
 import           Render
 import           QuadTreeApp.Render
 
@@ -16,21 +16,16 @@ renderGame :: JakeRenderer -> [Sprite] -> Render Game
 renderGame jr sprites g@(Game jake tiles (V2 w h)) = do
     renderViewport (_jrShader jr) w h white
 
-    let shdr      = _jrShader jr
-        tree      = makeQuadTree tiles
-        (_,_,p)   = _jMovement jake
-        cols      = queryPoint p tree 
+    let shdr = _jrShader jr
+        tree = makeQuadTree tiles
 
     void $ renderTileMap shdr sprites tiles
 
     _setModelview shdr eye4
     renderQTree shdr tree
 
-    forM_ cols $ \(b,_) -> strokePath_ shdr $ do
-                               setColor red 
-                               uncurryRectangle rectangleAt b
-
     void $ renderJake jr jake
+
     return g
 
 
@@ -49,11 +44,12 @@ renderTileMap shdr sprites tm = do
     return tm
 
 renderJake :: JakeRenderer -> Jake -> IO Jake
-renderJake jr (Jake action avp@(V2 _ _, V2 _ _, pos)) = do
+renderJake jr (Jake action avp@(_,_,pos)) = do
     let setPos p = do t <- gets _spriteTransform
                       modify $ \s -> s{ _spriteTransform = t{ _t2Position = p}}
         --setFrame _ = modify $ \s -> s{ _spriteFrame = 0 }
-        getSprite f = execState (setPos pos) (f jr)
+        getSprite f = execState (setPos (pos - V2 (tw/2) th)) (f jr)
+        V2 tw th = tileSize
         running  = getSprite _jrSpriteRunning
         chopping = getSprite _jrSpriteChopping
         talking  = getSprite _jrSpriteTalking

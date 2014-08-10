@@ -19,7 +19,7 @@ mainLoop :: WindowVar
          -> Env
          -> a
          -> IO ()
-mainLoop = mainLoop' clockTiming 
+mainLoop = mainLoop' clockTiming
 
 mainLoop' :: Timing IO
           -> WindowVar

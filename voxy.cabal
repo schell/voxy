@@ -75,7 +75,7 @@ executable wire
                        mtl -any
 
 executable ui
-  ghc-options:         -Wall
+  ghc-options:         -Wall -rtsopts -fprof-auto -fprof-cafs
   hs-source-dirs:      src
   main-is:             UI.hs
   build-depends:       base >=4.6 && <5.0,

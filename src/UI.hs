@@ -25,8 +25,7 @@ data ButtonState = BtnNormal
                  | BtnDown
                  deriving (Eq)
 
-data App = App { appSize :: V2 Int
-               , appBtn  :: Button
+data App = App { appBtn  :: Button
                , appPnt  :: V2 Double
                } deriving (Show)
 
@@ -96,16 +95,15 @@ point = switch moveBackAndForth
 --                                             BtnDown   -> V2 100 100
 
 appWire :: Wire InputEnvR () App
-appWire = App <$> windowSize
-              <*> btnWire
+appWire = App <$> btnWire
               <*> point
 
-render :: App -> Renderer -> IO ()
-render (App (V2 w h) (Button title c t2d) (V2 px py)) rndr = do
+render :: App -> Renderer -> V2 Int -> V2 Int -> IO ()
+render (App (Button title c t2d) (V2 px py)) rndr vps pjs = do
     let s = _shader rndr
         Transform2d (V2 x y) (V2 bw bh) _ _ = t2d
         frame = Rectangle x y bw bh
-    renderViewport s w h $ Color4 0 0 0 0
+    renderViewport s vps pjs $ Color4 0 0 0 0
     fillPath_ s $ do
         setColor c
         rectangle frame
@@ -123,13 +121,16 @@ loop wvar rndr env t w = do
     putMVar wvar ([], window)
     makeContextCurrent $ Just window
 
+    (vpw,vph) <- getFramebufferSize window
+    (pjw,pjh) <- getWindowSize window
+
     t' <- getCurrentTime
 
     let dt   = realToFrac $ diffUTCTime t' t
         env' = foldl foldInput env events
         Output app w' = runReader (stepWire w dt ()) env'
 
-    render app rndr
+    render app rndr (V2 vpw vph) (V2 pjw pjh)
     swapBuffers window
 
     shouldClose <- windowShouldClose window

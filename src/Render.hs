@@ -5,9 +5,9 @@ import           Urza as U
 import           Graphics.Rendering.OpenGL hiding (Matrix, renderer, get, drawPixels, Bitmap)
 import           Linear hiding (trace)
 
-renderViewport :: ShaderProgram -> Int -> Int -> Color4 GLfloat -> IO ()
-renderViewport shdr w h c = do
-    viewport $= (Position 0 0, Size (2 * fromIntegral w) (2 * fromIntegral h))
+renderViewport :: ShaderProgram -> V2 Int -> V2 Int -> Color4 GLfloat -> IO ()
+renderViewport shdr (V2 vpw vph) (V2 w h) c = do
+    viewport $= (Position 0 0, Size (fromIntegral vpw) (fromIntegral vph))
     clearColor $= c
     depthFunc $= Nothing --Just Lequal
     blend $= Enabled

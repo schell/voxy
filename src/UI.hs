@@ -1,7 +1,7 @@
+{-# LANGUAGE BangPatterns #-}
 module Main where
 
-import Wire.Core
-import Wire.Tween
+import Wire
 import Render
 import Linear hiding (point)
 import Urza hiding (color)
@@ -13,23 +13,29 @@ import Control.Applicative
 import System.Exit
 import System.Directory
 import Data.Time.Clock
+import Data.Maybe
 import qualified Data.Set as S
-
-data Button = Button { btnTitle :: String
-                     , btnColor :: Color4 Double
-                     , btnTransform :: Transform2d Double
-                     } deriving (Show)
 
 data ButtonState = BtnNormal
                  | BtnHover
                  | BtnDown
-                 deriving (Eq)
+                 deriving (Show, Eq)
+
+data Button = Button { btnTitle :: String
+                     , btnState :: ButtonState
+                     , btnTransform :: Transform2d Double
+                     } deriving (Show)
 
 data App = App { appBtn  :: Button
                , appPnt  :: V2 Double
                } deriving (Show)
 
 type InputEnvR = Reader InputEnv
+
+buttonColor :: ButtonState -> Color4 Double
+buttonColor BtnNormal = Color4 0.44 0.44 0.44 1.0
+buttonColor BtnHover  = Color4 0.55 0.55 0.55 1.0
+buttonColor BtnDown   = Color4 0.33 0.33 0.33 1.0
 
 btnTfrm :: Wire InputEnvR () (Transform2d Double)
 btnTfrm = Transform2d <$> btnPos <*> btnSize <*> scl <*> pure 0
@@ -41,8 +47,8 @@ btnPos = pure $ V2 10 10
 btnSize :: Wire InputEnvR () (V2 Double)
 btnSize = pure $ V2 100 32
 
-btnState :: Wire InputEnvR () ButtonState
-btnState = Wire $ \dt _ -> do
+btnSt :: Wire InputEnvR () ButtonState
+btnSt = Wire $ \dt _ -> do
     V2 x y  <- execWire btnPos dt ()
     V2 w h  <- execWire btnSize dt ()
     (mx,my) <- asks _ienvLastCursorPos
@@ -52,21 +58,14 @@ btnState = Wire $ \dt _ -> do
                          then BtnDown
                          else BtnHover
                   else BtnNormal
-    return $ Output state btnState
+    return $ Output state btnSt
 
-btnClr :: Wire InputEnvR () (Color4 Double)
-btnClr = Wire $ \dt _ -> do
-    state <- execWire btnState dt ()
-    let c = case state of
-                BtnNormal -> Color4 1 0 0 1
-                BtnHover  -> Color4 0 1 0 1
-                BtnDown   -> Color4 0 0 1 1
-    return $ Output c btnClr
+btnStateChanged :: Wire InputEnvR () (Maybe ButtonState)
+btnStateChanged = eventOnChange btnSt
 
 btnWire :: Wire InputEnvR () Button
-btnWire = Button <$> title <*> color <*> btnTfrm
-    where title = pure "Button"
-          color = btnClr
+btnWire = Button <$> title <*> btnSt <*> btnTfrm
+    where title = fmap show (holdWith BtnNormal $ btnStateChanged)
 
 windowSize :: Wire InputEnvR () (V2 Int)
 windowSize = Wire $ \_ _ -> do
@@ -78,40 +77,49 @@ cursor = Wire $ \_ _ -> do
     (x, y) <- asks _ienvLastCursorPos
     return $ Output (V2 x y) cursor
 
-point :: Wire InputEnvR () (V2 Double)
-point = switch moveBackAndForth
-    where switch w = Wire $ \dt _ -> do
-              s <- execWire btnState dt ()
-              if s /= BtnDown
-                then return $ Output (V2 0 0) $ switch w
-                else stepWire w dt ()
-          moveBackAndForth = for 4 moveThere --> (for 4 moveBack --> point)
-          moveThere = V2 <$> linear 0 100 4 <*> linear 0 100 4
-          moveBack  = V2 <$> linear 100 0 4 <*> linear 100 0 4
---point = btnState ~> switchState
---    where switchState = pureWire $ \s -> case s of
---                                             BtnNormal -> V2 0 0
---                                             BtnHover  -> V2 0 0
---                                             BtnDown   -> V2 100 100
+chainPoint :: Wire InputEnvR () (V2 Double)
+chainPoint = switchWhen btnSt (== BtnDown)
+                 restHere
+                 (moveFromUntilRelease $ V2 0 0)
+    where restHere  = pure $ V2 0 0
+          moveFromUntilRelease p = chainWhen btnSt (== BtnHover)
+                                        (moveFrom p) comeBackFrom
+          moveFrom (V2 x y) = tweenV2 easeOutExpo (V2 x y) (V2 100 0) (2- x/100 * 2)
+          comeBackFrom (V2 x _) = let t = x/100 *2
+                                  in chainWhen btnSt (== BtnDown)
+                                         (tweenV2 easeOutExpo (V2 x 0) (V2 0 0) t)
+                                         moveFromUntilRelease
 
 appWire :: Wire InputEnvR () App
 appWire = App <$> btnWire
-              <*> point
+              <*> chainPoint
+
+renderBtn :: Renderer -> Button -> IO ()
+renderBtn rndr (Button title st t2d) = do
+    let Transform2d (V2 x y) (V2 bw bh) _ _ = t2d
+        frame = Rectangle x y bw bh
+        shdr = _shader rndr
+    fillPath_ shdr $ do
+        setColor $ buttonColor st
+        rectangle frame
+    _setTextColor shdr $ Color4 1 1 1 1
+    let V2 w h = textSize rndr title
+        x' = x + (bw/2 - w/2)
+        y' = y + (bh/2 - h/2) - 4
+    _ <- drawTextAt' rndr (Position (floor x') (floor y')) title
+    return undefined
 
 render :: App -> Renderer -> V2 Int -> V2 Int -> IO ()
-render (App (Button title c t2d) (V2 px py)) rndr vps pjs = do
+render (App b (V2 px py)) rndr vps pjs = do
     let s = _shader rndr
-        Transform2d (V2 x y) (V2 bw bh) _ _ = t2d
-        frame = Rectangle x y bw bh
     renderViewport s vps pjs $ Color4 0 0 0 0
+    renderBtn rndr b
     fillPath_ s $ do
-        setColor c
-        rectangle frame
-    fillPath_ s $ do
+        setColor $ Color4 1 1 1 1
+        rectangle $ Rectangle px py 10 10
+    strokePath_ s $ do
         setColor $ Color4 1 0 1 1
         rectangle $ Rectangle px py 10 10
-    _setTextColor s $ Color4 1 1 1 1
-    _ <- drawTextAt' rndr (Position (floor x) (floor y)) title
     return ()
 
 loop :: WindowVar -> Renderer -> InputEnv -> UTCTime -> Wire (Reader InputEnv) () App -> IO ()
